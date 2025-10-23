@@ -1,0 +1,72 @@
+#
+# use `make MULTI_THREAD=1` to build version with multi threaded renderer
+# use `make USE_AVX2=1` to build version with AVX2 instructions
+# use `make USE_SSE41=1` to build version with SSE4.1 instructions
+# use `make USE_SSE2=1` to build version with SSE2 instructions
+#
+
+all: fmtg_pcmconvert.exe
+
+CFLAGS = -c -O3 -Wall
+LDFLAGS =
+
+ifdef MULTI_THREAD
+	CFLAGS += -DMULTI_THREAD
+	LDFLAGS += -lpthread
+endif
+
+CXXLAGS = $(CFLAGS)
+CXXLAGS += -x c++ -Wno-multichar -include compat.h -I../FM-tone-generator
+
+ifdef USE_AVX2
+	CXXLAGS += -mavx2
+endif
+ifdef USE_SSE41
+	CXXLAGS += -msse4.1
+endif
+ifdef USE_SSE2
+	CXXLAGS += -msse2
+endif
+
+common_object_files := Channel8.o ChannelManager.o Operator8.o FMMidi.o
+pcmconvert_object_files := midi_loader.o fmtg_pcmconvert.o
+
+ifeq (x$(CC)y$(MSYSTEM)z, xccyCLANG64z)
+CC = clang
+CXX = clang++
+else ifeq (x$(CC)y$(MSYSTEM)z, xccyCLANGARM64z)
+CC = clang
+CXX = clang++
+else ifeq ($(CC), cc)
+CC = gcc
+CXX = g++
+endif
+
+Channel8.o: ../FM-tone-generator/Channel8.mm compat.h ../FM-tone-generator/Channel8.h ../FM-tone-generator/Operator8.h ../FM-tone-generator/types.h
+	$(CXX) $(CXXLAGS) -include Channel8-platform.h -Wno-parentheses -flax-vector-conversions ../FM-tone-generator/Channel8.mm -o $@
+
+ChannelManager.o: ../FM-tone-generator/ChannelManager.mm compat.h ../FM-tone-generator/ChannelManager.h ../FM-tone-generator/Channel8.h ../FM-tone-generator/Operator8.h ../FM-tone-generator/types.h
+	$(CXX) $(CXXLAGS) ../FM-tone-generator/ChannelManager.mm -o $@
+
+Operator8.o: ../FM-tone-generator/Operator8.mm compat.h ../FM-tone-generator/Operator8.h ../FM-tone-generator/types.h
+	$(CXX) $(CXXLAGS) ../FM-tone-generator/Operator8.mm -o $@
+
+FMMidi.o: FMMidi.cc compat.h FMMidi.h ../FM-tone-generator/ChannelManager.h ../FM-tone-generator/Channel8.h ../FM-tone-generator/Operator8.h ../FM-tone-generator/types.h
+	$(CXX) $(CXXLAGS) FMMidi.cc -o $@
+
+midi_loader.o: midi_loader.c midi_loader.h
+	$(CC) $(CFLAGS) midi_loader.c -o $@
+
+fmtg_pcmconvert.o: fmtg_pcmconvert.c midi_loader.h FMMidi.h
+	$(CC) $(CFLAGS) fmtg_pcmconvert.c -o $@
+
+fmtg_pcmconvert.exe: $(common_object_files) $(pcmconvert_object_files)
+	$(CXX) -s -o fmtg_pcmconvert.exe $(common_object_files) $(pcmconvert_object_files) $(LDFLAGS)
+
+.PHONY: clean
+clean:
+ifdef MSYSTEM
+	rm -f fmtg_pcmconvert.exe $(common_object_files) $(pcmconvert_object_files)
+else
+	del fmtg_pcmconvert.exe $(subst /,\,$(common_object_files)) $(subst /,\,$(pcmconvert_object_files))
+endif

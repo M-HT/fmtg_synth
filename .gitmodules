@@ -1,0 +1,3 @@
+[submodule "FM-tone-generator"]
+	path = FM-tone-generator
+	url = https://github.com/kwhr0/FM-tone-generator.git

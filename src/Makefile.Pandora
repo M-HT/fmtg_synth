@@ -1,0 +1,42 @@
+all: fmtg_pcmconvert fmtg_alsadrv
+
+CFLAGS = -c -O3 -Wall -DPANDORA -march=armv7-a -mcpu=cortex-a8 -mtune=cortex-a8 -mfpu=neon -mfloat-abi=softfp -mthumb-interwork -I$(PNDSDK)/usr/include
+LDFLAGS = -L$(PNDSDK)/usr/lib
+
+CXXLAGS = $(CFLAGS)
+CXXLAGS += -x c++ -Wno-multichar -include compat.h -I../FM-tone-generator -faligned-new
+
+common_object_files := Channel8.o ChannelManager.o Operator8.o FMMidi.o
+pcmconvert_object_files := midi_loader.o fmtg_pcmconvert.o
+alsadrv_object_files := fmtg_alsadrv.o
+
+Channel8.o: ../FM-tone-generator/Channel8.mm compat.h ../FM-tone-generator/Channel8.h ../FM-tone-generator/Operator8.h ../FM-tone-generator/types.h
+	$(PNDSDK)/bin/pandora-g++ $(CXXLAGS) -include Channel8-platform.h -Wno-parentheses -flax-vector-conversions ../FM-tone-generator/Channel8.mm -o $@
+
+ChannelManager.o: ../FM-tone-generator/ChannelManager.mm compat.h ../FM-tone-generator/ChannelManager.h ../FM-tone-generator/Channel8.h ../FM-tone-generator/Operator8.h ../FM-tone-generator/types.h
+	$(PNDSDK)/bin/pandora-g++ $(CXXLAGS) ../FM-tone-generator/ChannelManager.mm -o $@
+
+Operator8.o: ../FM-tone-generator/Operator8.mm compat.h ../FM-tone-generator/Operator8.h ../FM-tone-generator/types.h
+	$(PNDSDK)/bin/pandora-g++ $(CXXLAGS) ../FM-tone-generator/Operator8.mm -o $@
+
+FMMidi.o: FMMidi.cc compat.h FMMidi.h ../FM-tone-generator/ChannelManager.h ../FM-tone-generator/Channel8.h ../FM-tone-generator/Operator8.h ../FM-tone-generator/types.h
+	$(PNDSDK)/bin/pandora-g++ $(CXXLAGS) FMMidi.cc -o $@
+
+midi_loader.o: midi_loader.c midi_loader.h
+	$(PNDSDK)/bin/pandora-gcc $(CFLAGS) midi_loader.c -o $@
+
+fmtg_pcmconvert.o: fmtg_pcmconvert.c midi_loader.h FMMidi.h
+	$(PNDSDK)/bin/pandora-gcc $(CFLAGS) fmtg_pcmconvert.c -o $@
+
+fmtg_alsadrv.o: fmtg_alsadrv.c FMMidi.h
+	$(PNDSDK)/bin/pandora-gcc $(CFLAGS) -Dsecure_getenv=__secure_getenv fmtg_alsadrv.c -o $@
+
+fmtg_pcmconvert: $(common_object_files) $(pcmconvert_object_files)
+	$(PNDSDK)/bin/pandora-g++ -s -o fmtg_pcmconvert $(common_object_files) $(pcmconvert_object_files) $(LDFLAGS)
+
+fmtg_alsadrv: $(common_object_files) fmtg_alsadrv.o
+	$(PNDSDK)/bin/pandora-g++ -s -o fmtg_alsadrv $(common_object_files) $(alsadrv_object_files) -lasound -lpthread -lrt $(LDFLAGS)
+
+.PHONY: clean
+clean:
+	rm -f fmtg_pcmconvert fmtg_alsadrv $(common_object_files) $(pcmconvert_object_files) $(alsadrv_object_files)

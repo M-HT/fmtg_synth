@@ -1,0 +1,7 @@
+*.exe
+*.EXE
+*.o
+*.obj
+*.OBJ
+**/src/fmtg_alsadrv
+**/src/fmtg_pcmconvert
