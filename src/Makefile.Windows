@@ -1,5 +1,5 @@
 #
-# use `make MULTI_THREAD=1` to build version with multi threaded renderer
+# use `make SINGLE_THREAD=1` to build version with single threaded renderer
 # use `make USE_AVX2=1` to build version with AVX2 instructions
 # use `make USE_SSE41=1` to build version with SSE4.1 instructions
 # use `make USE_SSE2=1` to build version with SSE2 instructions
@@ -8,11 +8,9 @@
 all: fmtg_pcmconvert.exe
 
 CFLAGS = -c -O3 -Wall
-LDFLAGS =
 
-ifdef MULTI_THREAD
+ifndef SINGLE_THREAD
 	CFLAGS += -DMULTI_THREAD
-	LDFLAGS += -lpthread
 endif
 
 CXXLAGS = $(CFLAGS)
@@ -61,7 +59,7 @@ fmtg_pcmconvert.o: fmtg_pcmconvert.c midi_loader.h FMMidi.h
 	$(CC) $(CFLAGS) fmtg_pcmconvert.c -o $@
 
 fmtg_pcmconvert.exe: $(common_object_files) $(pcmconvert_object_files)
-	$(CXX) -s -o fmtg_pcmconvert.exe $(common_object_files) $(pcmconvert_object_files) $(LDFLAGS)
+	$(CXX) -s -static-libgcc -static-libstdc++ -o fmtg_pcmconvert.exe $(common_object_files) $(pcmconvert_object_files)
 
 .PHONY: clean
 clean:

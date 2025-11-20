@@ -33,7 +33,17 @@
 #include <list>
 #include <vector>
 #ifdef MULTI_THREAD
-    #include <pthread.h>
+    #ifdef _WIN32
+        #define WIN32_LEAN_AND_MEAN
+        #include <windows.h>
+        typedef CRITICAL_SECTION pthread_mutex_t;
+        int pthread_mutex_init(pthread_mutex_t *mutex, void *mutexattr);
+        int pthread_mutex_destroy(pthread_mutex_t *mutex);
+        int pthread_mutex_lock(pthread_mutex_t *mutex);
+        int pthread_mutex_unlock(pthread_mutex_t *mutex);
+    #else
+        #include <pthread.h>
+    #endif
 #endif
 #ifdef __AVX2__
     #include <immintrin.h>

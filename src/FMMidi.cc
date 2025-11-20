@@ -27,8 +27,20 @@
 #include "Channel8.h"
 #include <string.h>
 #ifdef MULTI_THREAD
+    #include <stdlib.h>
+#ifdef _WIN32
+    #include <process.h>
+    typedef HANDLE fm_semaphore_t;
+#elif defined(__APPLE__)
+    #include <sys/sysctl.h>
+    #include <dispatch/dispatch.h>
+    typedef dispatch_semaphore_t fm_semaphore_t;
+#else
     #include <semaphore.h>
     #include <limits.h>
+    #include <unistd.h>
+    typedef sem_t *fm_semaphore_t;
+#endif
     #ifndef PTHREAD_STACK_MIN
         #define PTHREAD_STACK_MIN 16384
     #endif
@@ -84,8 +96,14 @@ static Channel channels[16];
 static struct thread_info_t
 {
     s32 *buf;
-    sem_t sem1, sem2;
+    volatile int quit;
+    fm_semaphore_t sem1, sem2;
+#ifdef _WIN32
+    HANDLE thread;
+#elif defined(__APPLE__)
+#else
     pthread_t thread;
+#endif
 } *thread_info;
 static int ncore;
 #endif
@@ -103,27 +121,189 @@ unsigned int FM_GetRenderedSamplesPerCall(void)
 
 
 #ifdef MULTI_THREAD
-static void *RenderThread(void *arg)
+#ifdef _WIN32
+int pthread_mutex_init(pthread_mutex_t *mutex, void *mutexattr)
+{
+    InitializeCriticalSection(mutex);
+    return 0;
+}
+
+int pthread_mutex_destroy(pthread_mutex_t *mutex)
+{
+    DeleteCriticalSection(mutex);
+    return 0;
+}
+
+int pthread_mutex_lock(pthread_mutex_t *mutex)
+{
+    EnterCriticalSection(mutex);
+    return 0;
+}
+
+int pthread_mutex_unlock(pthread_mutex_t *mutex)
+{
+    LeaveCriticalSection(mutex);
+    return 0;
+}
+#endif
+
+static inline int fm_semaphore_create(fm_semaphore_t *sem)
+{
+    fm_semaphore_t _sem;
+#ifdef _WIN32
+    _sem = CreateSemaphoreW(NULL, 0, 1, NULL);
+#elif defined(__APPLE__)
+    _sem = dispatch_semaphore_create(0);
+#else
+    _sem = new sem_t;
+    if (0 != sem_init(_sem, 0, 0))
+    {
+        delete _sem;
+        _sem = NULL;
+    }
+#endif
+    *sem = _sem;
+    return (_sem != NULL) ? 1 : 0;
+}
+
+static inline void fm_semaphore_destroy(fm_semaphore_t sem)
+{
+#ifdef _WIN32
+    CloseHandle(sem);
+#elif defined(__APPLE__)
+    dispatch_release(sem);
+#else
+    sem_destroy(sem);
+    delete sem;
+#endif
+}
+
+static inline void fm_semaphore_wait(fm_semaphore_t sem)
+{
+#ifdef _WIN32
+    while (WaitForSingleObject(sem, INFINITE));
+#elif defined(__APPLE__)
+    dispatch_semaphore_wait(sem, DISPATCH_TIME_FOREVER);
+#else
+    while (sem_wait(sem));
+#endif
+}
+
+static inline void fm_semaphore_signal(fm_semaphore_t sem)
+{
+#ifdef _WIN32
+    ReleaseSemaphore(sem, 1, NULL);
+#elif defined(__APPLE__)
+    dispatch_semaphore_signal(sem);
+#else
+    sem_post(sem);
+#endif
+}
+
+static
+#ifdef _WIN32
+unsigned __stdcall
+#elif defined(__APPLE__)
+void
+#else
+void *
+#endif
+RenderThread(void *arg)
 {
     thread_info_t *info = (thread_info_t *)arg;
 
-    while (1)
+    for (;;)
     {
-        sem_wait(&info->sem1);
+        fm_semaphore_wait(info->sem1);
+        if (info->quit)
+        {
+            fm_semaphore_signal(info->sem2);
+            break;
+        }
         memset(info->buf, 0, sizeof(s32) * 2 * MIDI_UNIT);
         while (!gMan->Update1(info->buf, MIDI_UNIT));
-        sem_post(&info->sem2);
+        fm_semaphore_signal(info->sem2);
     }
+#ifdef _WIN32
+    return 0;
+#elif defined(__APPLE__)
+    return;
+#else
     return NULL;
+#endif
+}
+
+static void DestroyThreads(void)
+{
+    if (ncore > 1)
+    {
+        int num_threads = ncore - 1;
+
+        for (int i = num_threads; i != 0; i--)
+        {
+            thread_info[i - 1].quit = 1;
+            fm_semaphore_signal(thread_info[i - 1].sem1);
+        }
+
+        for (int i = num_threads; i != 0; i--)
+        {
+            fm_semaphore_wait(thread_info[i - 1].sem2);
+#ifdef ALIGN_BUF
+            delete[] (s32 *)(((uintptr_t)thread_info[i - 1].buf) - thread_info[i - 1].buf[-1]);
+#else
+            delete[] thread_info[i - 1].buf;
+#endif
+#ifdef _WIN32
+            CloseHandle(thread_info[i - 1].thread);
+#endif
+            fm_semaphore_destroy(thread_info[i - 1].sem2);
+            fm_semaphore_destroy(thread_info[i - 1].sem1);
+        }
+
+        delete[] thread_info;
+
+        ncore = 1;
+    }
 }
 
 static void CreateThreads(int num_threads)
 {
+#ifdef ALIGN_BUF
+    s32 *unaligned_buf;
+#endif
+
+#ifdef _WIN32
+    SYSTEM_INFO si;
+
+    GetSystemInfo(&si);
+    if (si.dwNumberOfProcessors > 0 && (unsigned int)num_threads > si.dwNumberOfProcessors) num_threads = si.dwNumberOfProcessors;
+#elif defined(__APPLE__)
+    int mib[2], num_procs;
+    size_t len;
+    dispatch_queue_global_t queue;
+
+    mib[0] = CTL_HW;
+    mib[1] = HW_NCPU;
+    len = sizeof(num_procs);
+    if (0 == sysctl(mib, 2, &num_procs, &len, NULL, 0))
+    {
+        if (num_procs > 0 && num_threads > num_procs) num_threads = num_procs;
+    }
+#else
+    long num_procs;
     pthread_attr_t attr;
+
+    num_procs = sysconf(_SC_NPROCESSORS_CONF);
+    if (num_procs > 0 && num_threads > num_procs) num_threads = num_procs;
+#endif
 
     ncore = 1;
     if (num_threads <= 1) return;
 
+#ifdef _WIN32
+#elif defined(__APPLE__)
+    queue = dispatch_get_global_queue(DISPATCH_QUEUE_PRIORITY_DEFAULT, 0);
+#else
     if (0 != pthread_attr_init(&attr)) return;
 
     if (0 != pthread_attr_setdetachstate(&attr, PTHREAD_CREATE_DETACHED))
@@ -137,27 +317,66 @@ static void CreateThreads(int num_threads)
         pthread_attr_destroy(&attr);
         return;
     }
+#endif
 
     thread_info = new thread_info_t[num_threads - 1];
 
     for (int i = 0; i < num_threads - 1; i++)
     {
-        if (0 != sem_init(&thread_info[i].sem1, 0, 0)) break;
-        if (0 != sem_init(&thread_info[i].sem2, 0, 0)) break;
+        if (!fm_semaphore_create(&thread_info[i].sem1)) break;
+        if (!fm_semaphore_create(&thread_info[i].sem2))
+        {
+            fm_semaphore_destroy(thread_info[i].sem1);
+            break;
+        }
 
 #ifdef ALIGN_BUF
-        thread_info[i].buf = new s32[MIDI_UNIT * 2 + ((2 * ALIGN_BUF) / sizeof(s32))];
-        thread_info[i].buf = (s32 *) ((2 * ALIGN_BUF + (uintptr_t)thread_info[i].buf) & ~((uintptr_t) (2 * ALIGN_BUF) - 1));
+        unaligned_buf = new s32[MIDI_UNIT * 2 + ((2 * ALIGN_BUF) / sizeof(s32))];
+        thread_info[i].buf = (s32 *) ((2 * ALIGN_BUF + (uintptr_t)unaligned_buf) & ~((uintptr_t) (2 * ALIGN_BUF) - 1));
+        thread_info[i].buf[-1] = (s32)(((uintptr_t)thread_info[i].buf) - ((uintptr_t)unaligned_buf));
 #else
         thread_info[i].buf = new s32[MIDI_UNIT * 2];
 #endif
 
-        if (0 != pthread_create(&thread_info[i].thread, &attr, &RenderThread, &thread_info[i])) break;
+        thread_info[i].quit = 0;
+
+#ifdef _WIN32
+        thread_info[i].thread = (HANDLE)_beginthreadex(NULL, PTHREAD_STACK_MIN + 16384, &RenderThread, &thread_info[i], 0, NULL);
+        if (NULL == thread_info[i].thread)
+#elif defined(__APPLE__)
+        dispatch_async_f(queue, &thread_info[i], &RenderThread);
+        if (0)
+#else
+        if (0 != pthread_create(&thread_info[i].thread, &attr, &RenderThread, &thread_info[i]))
+#endif
+        {
+#ifdef ALIGN_BUF
+            delete[] unaligned_buf;
+#else
+            delete[] thread_info[i].buf;
+#endif
+            fm_semaphore_destroy(thread_info[i].sem2);
+            fm_semaphore_destroy(thread_info[i].sem1);
+            break;
+        }
 
         ncore++;
     }
 
+#ifdef _WIN32
+#elif defined(__APPLE__)
+#else
     pthread_attr_destroy(&attr);
+#endif
+
+    if (ncore == 1)
+    {
+        delete[] thread_info;
+    }
+    else
+    {
+        atexit(&DestroyThreads);
+    }
 }
 #endif
 
@@ -413,7 +632,7 @@ void FM_RenderSamplesS16Interleaved(int16_t *samples)
 
         for (int i = num_threads; i != 0; i--)
         {
-            sem_post(&thread_info[i - 1].sem1);
+            fm_semaphore_signal(thread_info[i - 1].sem1);
         }
 
         memset(buf, 0, sizeof(s32) * 2 * MIDI_UNIT);
@@ -421,7 +640,7 @@ void FM_RenderSamplesS16Interleaved(int16_t *samples)
 
         for (int i = num_threads; i != 0; i--)
         {
-            sem_wait(&thread_info[i - 1].sem2);
+            fm_semaphore_wait(thread_info[i - 1].sem2);
         }
 
         gMan->Poll();
@@ -585,7 +804,7 @@ void FM_RenderSamplesFloat(float * RESTRICT samples0, float * RESTRICT samples1)
 
         for (int i = num_threads; i != 0; i--)
         {
-            sem_post(&thread_info[i - 1].sem1);
+            fm_semaphore_signal(thread_info[i - 1].sem1);
         }
 
         memset(buf, 0, sizeof(s32) * 2 * MIDI_UNIT);
@@ -593,7 +812,7 @@ void FM_RenderSamplesFloat(float * RESTRICT samples0, float * RESTRICT samples1)
 
         for (int i = num_threads; i != 0; i--)
         {
-            sem_wait(&thread_info[i - 1].sem2);
+            fm_semaphore_wait(thread_info[i - 1].sem2);
         }
 
         gMan->Poll();
