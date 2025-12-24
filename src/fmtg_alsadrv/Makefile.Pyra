@@ -1,0 +1,31 @@
+all: fmtg_alsadrv
+
+CFLAGS = -c -O3 -Wall -DMULTI_THREAD -DPYRA -march=armv7ve+simd -mcpu=cortex-a15 -mtune=cortex-a15 -mfpu=neon-vfpv4 -mfloat-abi=hard -mthumb
+
+CXXLAGS = $(CFLAGS)
+CXXLAGS += -x c++ -Wno-multichar -include ../compat.h -I../../FM-tone-generator -faligned-new
+
+common_object_files := Channel8.o ChannelManager.o Operator8.o FMMidi.o
+alsadrv_object_files := fmtg_alsadrv.o
+
+Channel8.o: ../../FM-tone-generator/Channel8.mm ../compat.h ../../FM-tone-generator/Channel8.h ../../FM-tone-generator/Operator8.h ../../FM-tone-generator/types.h
+	g++ $(CXXLAGS) -DTARGET_OS_IPHONE=0 -include ../Channel8-platform.h -Wno-parentheses -flax-vector-conversions ../../FM-tone-generator/Channel8.mm -o $@
+
+ChannelManager.o: ../../FM-tone-generator/ChannelManager.mm ../compat.h ../../FM-tone-generator/ChannelManager.h ../../FM-tone-generator/Channel8.h ../../FM-tone-generator/Operator8.h ../../FM-tone-generator/types.h
+	g++ $(CXXLAGS) ../../FM-tone-generator/ChannelManager.mm -o $@
+
+Operator8.o: ../../FM-tone-generator/Operator8.mm ../compat.h ../../FM-tone-generator/Operator8.h ../../FM-tone-generator/types.h
+	g++ $(CXXLAGS) ../../FM-tone-generator/Operator8.mm -o $@
+
+FMMidi.o: ../FMMidi.cc ../compat.h ../FMMidi.h ../../FM-tone-generator/ChannelManager.h ../../FM-tone-generator/Channel8.h ../../FM-tone-generator/Operator8.h ../../FM-tone-generator/types.h
+	g++ $(CXXLAGS) ../FMMidi.cc -o $@
+
+fmtg_alsadrv.o: fmtg_alsadrv.c ../FMMidi.h
+	gcc $(CFLAGS) fmtg_alsadrv.c -I.. -o $@
+
+fmtg_alsadrv: $(common_object_files) fmtg_alsadrv.o
+	g++ -s -o fmtg_alsadrv $(common_object_files) $(alsadrv_object_files) -lasound -lpthread
+
+.PHONY: clean
+clean:
+	rm -f fmtg_alsadrv $(common_object_files) $(alsadrv_object_files)

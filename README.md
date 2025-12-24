@@ -14,11 +14,12 @@ The projects consists of following parts:
 * **FM-tone-generator**
   * FM-tone-generator project submodule
   * Either clone this project with `--recurse-submodules` parameter or run `git submodule init` followed by `git submodule update` after cloning this project.
-* **src**
-  * Source code to create following programs:
-  * *fmtg_alsadrv* - Linux daemon which provides [ALSA](https://en.wikipedia.org/wiki/Advanced_Linux_Sound_Architecture) MIDI sequencer interface.
-  * *fmtg_pcmconvert* - Tool to convert [Standard MIDI File](https://www.midi.org/specifications-old/item/standard-midi-files-smf) to *PCM* (*WAV* or *RAW*).
-  * Both programs require a datafile to work.
+* **src/fmtg_alsadrv**
+  * Linux daemon which provides [ALSA](https://en.wikipedia.org/wiki/Advanced_Linux_Sound_Architecture) MIDI sequencer interface.
+  * It requires a datafile to work.
+* **src/fmtg_pcmconvert**
+  * Tool to convert [Standard MIDI File](https://www.midi.org/specifications-old/item/standard-midi-files-smf) to *PCM* (*WAV* or *RAW*).
+  * It requires a datafile to work.
 * **datafiles**
   * *tone1.bin* - Datafile based on [htsfms](https://web.archive.org/web/20220102090815/http://hp.vector.co.jp/authors/VA024632/) 0.7
   * *tone2.bin* - Datafile based on htsfms 0.9

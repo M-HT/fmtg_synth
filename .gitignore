@@ -3,5 +3,5 @@
 *.o
 *.obj
 *.OBJ
-**/src/fmtg_alsadrv
-**/src/fmtg_pcmconvert
+**/src/fmtg_alsadrv/fmtg_alsadrv
+**/src/fmtg_pcmconvert/fmtg_pcmconvert

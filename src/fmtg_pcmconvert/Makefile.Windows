@@ -14,7 +14,7 @@ ifndef SINGLE_THREAD
 endif
 
 CXXLAGS = $(CFLAGS)
-CXXLAGS += -x c++ -Wno-multichar -include compat.h -I../FM-tone-generator
+CXXLAGS += -x c++ -Wno-multichar -include ../compat.h -I../../FM-tone-generator
 
 ifdef USE_AVX2
 	CXXLAGS += -mavx2
@@ -40,23 +40,23 @@ CC = gcc
 CXX = g++
 endif
 
-Channel8.o: ../FM-tone-generator/Channel8.mm compat.h ../FM-tone-generator/Channel8.h ../FM-tone-generator/Operator8.h ../FM-tone-generator/types.h
-	$(CXX) $(CXXLAGS) -include Channel8-platform.h -Wno-parentheses -flax-vector-conversions ../FM-tone-generator/Channel8.mm -o $@
+Channel8.o: ../../FM-tone-generator/Channel8.mm ../compat.h ../../FM-tone-generator/Channel8.h ../../FM-tone-generator/Operator8.h ../../FM-tone-generator/types.h
+	$(CXX) $(CXXLAGS) -DTARGET_OS_IPHONE=0 -include ../Channel8-platform.h -Wno-parentheses -flax-vector-conversions ../../FM-tone-generator/Channel8.mm -o $@
 
-ChannelManager.o: ../FM-tone-generator/ChannelManager.mm compat.h ../FM-tone-generator/ChannelManager.h ../FM-tone-generator/Channel8.h ../FM-tone-generator/Operator8.h ../FM-tone-generator/types.h
-	$(CXX) $(CXXLAGS) ../FM-tone-generator/ChannelManager.mm -o $@
+ChannelManager.o: ../../FM-tone-generator/ChannelManager.mm ../compat.h ../../FM-tone-generator/ChannelManager.h ../../FM-tone-generator/Channel8.h ../../FM-tone-generator/Operator8.h ../../FM-tone-generator/types.h
+	$(CXX) $(CXXLAGS) ../../FM-tone-generator/ChannelManager.mm -o $@
 
-Operator8.o: ../FM-tone-generator/Operator8.mm compat.h ../FM-tone-generator/Operator8.h ../FM-tone-generator/types.h
-	$(CXX) $(CXXLAGS) ../FM-tone-generator/Operator8.mm -o $@
+Operator8.o: ../../FM-tone-generator/Operator8.mm ../compat.h ../../FM-tone-generator/Operator8.h ../../FM-tone-generator/types.h
+	$(CXX) $(CXXLAGS) ../../FM-tone-generator/Operator8.mm -o $@
 
-FMMidi.o: FMMidi.cc compat.h FMMidi.h ../FM-tone-generator/ChannelManager.h ../FM-tone-generator/Channel8.h ../FM-tone-generator/Operator8.h ../FM-tone-generator/types.h
-	$(CXX) $(CXXLAGS) FMMidi.cc -o $@
+FMMidi.o: ../FMMidi.cc ../compat.h ../FMMidi.h ../../FM-tone-generator/ChannelManager.h ../../FM-tone-generator/Channel8.h ../../FM-tone-generator/Operator8.h ../../FM-tone-generator/types.h
+	$(CXX) $(CXXLAGS) ../FMMidi.cc -o $@
 
 midi_loader.o: midi_loader.c midi_loader.h
 	$(CC) $(CFLAGS) midi_loader.c -o $@
 
-fmtg_pcmconvert.o: fmtg_pcmconvert.c midi_loader.h FMMidi.h
-	$(CC) $(CFLAGS) fmtg_pcmconvert.c -o $@
+fmtg_pcmconvert.o: fmtg_pcmconvert.c midi_loader.h ../FMMidi.h
+	$(CC) $(CFLAGS) fmtg_pcmconvert.c -I.. -o $@
 
 fmtg_pcmconvert.exe: $(common_object_files) $(pcmconvert_object_files)
 	$(CXX) -s -static-libgcc -static-libstdc++ -o fmtg_pcmconvert.exe $(common_object_files) $(pcmconvert_object_files)
