@@ -17,6 +17,9 @@ The projects consists of following parts:
 * **src/fmtg_alsadrv**
   * Linux daemon which provides [ALSA](https://en.wikipedia.org/wiki/Advanced_Linux_Sound_Architecture) MIDI sequencer interface.
   * It requires a datafile to work.
+* **src/fmtg_coredrv**
+  * MacOS daemon which provides Core MIDI synthesizer.
+  * It requires a datafile to work.
 * **src/fmtg_pcmconvert**
   * Tool to convert [Standard MIDI File](https://www.midi.org/specifications-old/item/standard-midi-files-smf) to *PCM* (*WAV* or *RAW*).
   * It requires a datafile to work.
