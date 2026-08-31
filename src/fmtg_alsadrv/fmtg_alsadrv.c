@@ -1,6 +1,6 @@
 /**
  *
- *  Copyright (C) 2022-2025 Roman Pauer
+ *  Copyright (C) 2022-2026 Roman Pauer
  *
  *  Permission is hereby granted, free of charge, to any person obtaining a copy of
  *  this software and associated documentation files (the "Software"), to deal in
@@ -23,7 +23,9 @@
  */
 
 #define _FILE_OFFSET_BITS 64
+#ifndef _GNU_SOURCE
 #define _GNU_SOURCE
+#endif
 #include <stdlib.h>
 #include <stdio.h>
 #include <stdint.h>
@@ -183,7 +185,7 @@ static void write_long_event(const uint8_t *event, unsigned int length)
     event_buffer[write_index] = 0xff000000 | length;
     write_index = (write_index + 1) & 0x7fff;
 
-    if ((write_index >= read_index) && (length > (32768 - write_index) << 2))
+    if ((write_index >= read_index) && ((int)length > (32768 - write_index) << 2))
     {
         // FMTG Synth doesn't support sysex fragments
         // instead of splitting the sysex into two parts, continue writing the second part into extra provided area
@@ -357,7 +359,7 @@ static void process_event(snd_seq_event_t *event)
 
         case SND_SEQ_EVENT_SYSEX:
             // FMTG Synth doesn't support sysex fragments
-            write_long_event(event->data.ext.ptr, event->data.ext.len);
+            write_long_event((uint8_t *)event->data.ext.ptr, event->data.ext.len);
 
 #ifdef PRINT_EVENTS
             printf("SysEx (fragment) of size %d\n", event->data.ext.len);
@@ -1116,7 +1118,7 @@ static int drop_privileges(void)
 
     printf("Dropped root privileges\n");
 
-    chdir("/");
+    if (0 != chdir("/")) {}
 
     // define some environment variables
 
@@ -1154,7 +1156,7 @@ static int start_thread(void)
     volatile int initialized;
 
     // try to increase priority (only root)
-    nice(-20);
+    if (-1 == nice(-20)) {}
 
     err = pthread_attr_init(&attr);
     if (err != 0)
@@ -1270,7 +1272,7 @@ static int output_subbuffer(int num)
 static void main_loop(void) __attribute__((noinline));
 static void main_loop(void)
 {
-    int is_paused, index;
+    unsigned int is_paused, index;
     struct timespec last_written_time, current_time;
 #if defined(CLOCK_MONOTONIC_RAW)
     clockid_t monotonic_clock_id;
