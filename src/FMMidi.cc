@@ -1,6 +1,6 @@
 /**
  *
- *  Copyright (C) 2025 Roman Pauer
+ *  Copyright (C) 2025-2026 Roman Pauer
  *
  *  Permission is hereby granted, free of charge, to any person obtaining a copy of
  *  this software and associated documentation files (the "Software"), to deal in
@@ -457,7 +457,12 @@ void FM_MidiMessageShort(uint32_t message)
                     pan = d.pan;
                 }
 
-                gMan->KeyOn(prognum, note, velocity, pchannel->volume, pchannel->expression, pan, ((s32)pchannel->bendsen * pchannel->bend) >> 6, (message & 0x7f00) | (chnum + pchannel->percid));
+                // The original pitch bend calculation is: ((s32)pchannel->bendsen * pchannel->bend) >> 6
+                // In method Channel8::NoteOn (in file Channel8.mm), the note number is doubled by default (unless the flag for halved pitch is set).
+                // Therefore the pitch bend value should also be doubled.
+                // The doubling is done here (and bellow in Pitch bend message) by changing the shift value to 5, but it could also be done in method Operator8::GetDelta (in file Operator8.h).
+                // If, in the future, the doubling is done in method Operator8::GetDelta (or somewhere else), then the calculation here should be restored.
+                gMan->KeyOn(prognum, note, velocity, pchannel->volume, pchannel->expression, pan, ((s32)pchannel->bendsen * pchannel->bend) >> 5, (message & 0x7f00) | (chnum + pchannel->percid));
                 break;
             }
             // fallthrough
@@ -522,7 +527,13 @@ void FM_MidiMessageShort(uint32_t message)
             break;
         case 0x0E: // Pitch bend
             pchannel->bend = (((message >> 9) & 0x3f80) | ((message >> 8) & 0x7f)) - 8192;
-            gMan->Bend(chnum + pchannel->percid, ((s32)pchannel->bendsen * pchannel->bend) >> 6);
+
+            // The original pitch bend calculation is: ((s32)pchannel->bendsen * pchannel->bend) >> 6
+            // In method Channel8::NoteOn (in file Channel8.mm), the note number is doubled by default (unless the flag for halved pitch is set).
+            // Therefore the pitch bend value should also be doubled.
+            // The doubling is done here (and above in Note on message) by changing the shift value to 5, but it could also be done in method Operator8::GetDelta (in file Operator8.h).
+            // If, in the future, the doubling is done in method Operator8::GetDelta (or somewhere else), then the calculation here should be restored.
+            gMan->Bend(chnum + pchannel->percid, ((s32)pchannel->bendsen * pchannel->bend) >> 5);
             break;
         case 0x0A: // Pressure change
         case 0x0D: // Channel pressure
